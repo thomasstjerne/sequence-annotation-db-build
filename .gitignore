@@ -1,0 +1,8 @@
+# Secrets
+.env
+
+# Downloaded sources and build products — both are large and reproducible.
+source-data/
+output/
+*.udb
+*.fasta

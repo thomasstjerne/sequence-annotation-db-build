@@ -1,0 +1,401 @@
+# datasets.yaml
+# Master configuration for all reference database sources.
+#
+# Used by converters/download_and_convert.sh to:
+#   - create source-data/<short_name>/
+#   - download all endpoints (skips files already present)
+#   - run prepare_cmd once (skipped if prepare_sentinel path already exists)
+#   - run convert_cmd to produce output/fasta/<short_name>_<target_gene>.fasta
+#
+# Update endpoint URLs when new database versions are released.
+
+datasets:
+
+  - short_name: mitofish
+    version: "2026-04"
+    target_gene: SSU_rRNA_12S_mitochondrial
+    taxonomic_scope: Fish (Actinopterygii, Chondrichthyes)
+    citation: >
+      Sato Y et al. (2013) MitoFish and MitoAnnotator: A mitochondrial genome database
+      of fish with an accurate and automatic annotation pipeline.
+      Mol. Biol. Evol. 30(11):2531-2540. https://mitofish.aori.u-tokyo.ac.jp
+    endpoints:
+      # URL paths include a release date — update when a new version is published.
+      - https://mitofish.aori.u-tokyo.ac.jp/download/fullseq/2026/04/mitofishdb.fa.gz
+      - https://mitofish.aori.u-tokyo.ac.jp/download/tables/2026/04/tables.tar
+    prepare_cmd: mkdir -p source-data/mitofish/tables && tar -xf source-data/mitofish/tables.tar -C source-data/mitofish/tables
+    prepare_sentinel: source-data/mitofish/tables
+    convert_cmd: python3 converters/mitofish_to_fasta.py source-data/mitofish/mitofishdb.fa.gz source-data/mitofish/tables mitofish_12s --target-gene SSU_rRNA_12S_mitochondrial
+    postprocess_cmd: python3 converters/duplicate_analysis.py --fasta output/fasta/mitofish_12s.fasta --write-deduped output/fasta/mitofish_12s_deduped.fasta
+    postprocess_fasta: mitofish_12s_deduped
+
+  - short_name: nbdl
+    version: "2024"   # no formal version; update if the archive is refreshed
+    target_gene: SSU_rRNA_12S_mitochondrial
+    taxonomic_scope: Australian fauna (all groups)
+    citation: >
+      National Biodiversity DNA Library (NBDL).
+      https://www.ala.org.au/nbdl
+    endpoints:
+      - https://labs.gbif.org/~tsjeppesen/nbdl.zip
+    prepare_cmd: unzip -n source-data/nbdl/nbdl.zip -d source-data/nbdl/extracted
+    prepare_sentinel: source-data/nbdl/extracted
+    convert_cmd: python3 converters/dwc_to_fasta.py source-data/nbdl/extracted nbdl_12s --target-gene SSU_rRNA_12S_mitochondrial --filter-gene 12s
+
+  - short_name: midori2
+    version: GB269
+    target_gene: SSU_rRNA_12S_mitochondrial
+    taxonomic_scope: Vertebrates (12S rRNA, GenBank-derived)
+    citation: >
+      Machida RJ et al. (2017) MIDORI: a new reference database for the
+      identification of organisms using cytoplasmic gene sequences.
+      Mol. Ecol. Resour. 17(4):e12-e15. https://www.reference-midori.info
+    curl_flags: --insecure  # reference-midori.info has an invalid SSL certificate
+    endpoints:
+      # URL path includes GenBank release and date — update when a new version is published.
+      - https://www.reference-midori.info/download/Databases/GenBank269_2025-12-09/BLAST/uniq/fasta/MIDORI2_UNIQ_NUC_GB269_srRNA_BLAST.fasta.zip
+    prepare_cmd: unzip -n source-data/midori2/MIDORI2_UNIQ_NUC_GB269_srRNA_BLAST.fasta.zip -d source-data/midori2/
+    prepare_sentinel: source-data/midori2/MIDORI2_UNIQ_NUC_GB269_srRNA_BLAST.fasta
+    convert_cmd: python3 converters/midori2_to_fasta.py source-data/midori2/MIDORI2_UNIQ_NUC_GB269_srRNA_BLAST.fasta midori2_12s --target-gene SSU_rRNA_12S_mitochondrial
+
+  - short_name: midori2_cytb
+    version: GB269
+    target_gene: CytB
+    taxonomic_scope: Metazoa (cytochrome b, GenBank-derived)
+    citation: >
+      Machida RJ et al. (2017) MIDORI: a new reference database for the
+      identification of organisms using cytoplasmic gene sequences.
+      Mol. Ecol. Resour. 17(4):e12-e15. https://www.reference-midori.info
+    curl_flags: --insecure  # reference-midori.info has an invalid SSL certificate
+    endpoints:
+      - https://www.reference-midori.info/download/Databases/GenBank269_2025-12-09/BLAST/uniq/fasta/MIDORI2_UNIQ_NUC_GB269_Cytb_BLAST.fasta.zip
+    prepare_cmd: unzip -n source-data/midori2_cytb/MIDORI2_UNIQ_NUC_GB269_Cytb_BLAST.fasta.zip -d source-data/midori2_cytb/
+    prepare_sentinel: source-data/midori2_cytb/MIDORI2_UNIQ_NUC_GB269_Cytb_BLAST.fasta
+    convert_cmd: python3 converters/midori2_to_fasta.py source-data/midori2_cytb/MIDORI2_UNIQ_NUC_GB269_Cytb_BLAST.fasta midori2_cytb --target-gene CytB
+
+  - short_name: midori2_co2
+    version: GB269
+    target_gene: COII
+    taxonomic_scope: Metazoa (cytochrome c oxidase subunit II, GenBank-derived)
+    citation: >
+      Machida RJ et al. (2017) MIDORI: a new reference database for the
+      identification of organisms using cytoplasmic gene sequences.
+      Mol. Ecol. Resour. 17(4):e12-e15. https://www.reference-midori.info
+    curl_flags: --insecure  # reference-midori.info has an invalid SSL certificate
+    endpoints:
+      - https://www.reference-midori.info/download/Databases/GenBank269_2025-12-09/BLAST/uniq/fasta/MIDORI2_UNIQ_NUC_GB269_CO2_BLAST.fasta.zip
+    prepare_cmd: unzip -n source-data/midori2_co2/MIDORI2_UNIQ_NUC_GB269_CO2_BLAST.fasta.zip -d source-data/midori2_co2/
+    prepare_sentinel: source-data/midori2_co2/MIDORI2_UNIQ_NUC_GB269_CO2_BLAST.fasta
+    convert_cmd: python3 converters/midori2_to_fasta.py source-data/midori2_co2/MIDORI2_UNIQ_NUC_GB269_CO2_BLAST.fasta midori2_co2 --target-gene COII
+
+  - short_name: midori2_co3
+    version: GB269
+    target_gene: COIII
+    taxonomic_scope: Metazoa (cytochrome c oxidase subunit III, GenBank-derived)
+    citation: >
+      Machida RJ et al. (2017) MIDORI: a new reference database for the
+      identification of organisms using cytoplasmic gene sequences.
+      Mol. Ecol. Resour. 17(4):e12-e15. https://www.reference-midori.info
+    curl_flags: --insecure  # reference-midori.info has an invalid SSL certificate
+    endpoints:
+      - https://www.reference-midori.info/download/Databases/GenBank269_2025-12-09/BLAST/uniq/fasta/MIDORI2_UNIQ_NUC_GB269_CO3_BLAST.fasta.zip
+    prepare_cmd: unzip -n source-data/midori2_co3/MIDORI2_UNIQ_NUC_GB269_CO3_BLAST.fasta.zip -d source-data/midori2_co3/
+    prepare_sentinel: source-data/midori2_co3/MIDORI2_UNIQ_NUC_GB269_CO3_BLAST.fasta
+    convert_cmd: python3 converters/midori2_to_fasta.py source-data/midori2_co3/MIDORI2_UNIQ_NUC_GB269_CO3_BLAST.fasta midori2_co3 --target-gene COIII
+
+  - short_name: midori2_nd1
+    version: GB269
+    target_gene: ND1
+    taxonomic_scope: Metazoa (NADH dehydrogenase subunit 1, GenBank-derived)
+    citation: >
+      Machida RJ et al. (2017) MIDORI: a new reference database for the
+      identification of organisms using cytoplasmic gene sequences.
+      Mol. Ecol. Resour. 17(4):e12-e15. https://www.reference-midori.info
+    curl_flags: --insecure  # reference-midori.info has an invalid SSL certificate
+    endpoints:
+      - https://www.reference-midori.info/download/Databases/GenBank269_2025-12-09/BLAST/uniq/fasta/MIDORI2_UNIQ_NUC_GB269_ND1_BLAST.fasta.zip
+    prepare_cmd: unzip -n source-data/midori2_nd1/MIDORI2_UNIQ_NUC_GB269_ND1_BLAST.fasta.zip -d source-data/midori2_nd1/
+    prepare_sentinel: source-data/midori2_nd1/MIDORI2_UNIQ_NUC_GB269_ND1_BLAST.fasta
+    convert_cmd: python3 converters/midori2_to_fasta.py source-data/midori2_nd1/MIDORI2_UNIQ_NUC_GB269_ND1_BLAST.fasta midori2_nd1 --target-gene ND1
+
+  - short_name: midori2_nd2
+    version: GB269
+    target_gene: ND2
+    taxonomic_scope: Metazoa (NADH dehydrogenase subunit 2, GenBank-derived)
+    citation: >
+      Machida RJ et al. (2017) MIDORI: a new reference database for the
+      identification of organisms using cytoplasmic gene sequences.
+      Mol. Ecol. Resour. 17(4):e12-e15. https://www.reference-midori.info
+    curl_flags: --insecure  # reference-midori.info has an invalid SSL certificate
+    endpoints:
+      - https://www.reference-midori.info/download/Databases/GenBank269_2025-12-09/BLAST/uniq/fasta/MIDORI2_UNIQ_NUC_GB269_ND2_BLAST.fasta.zip
+    prepare_cmd: unzip -n source-data/midori2_nd2/MIDORI2_UNIQ_NUC_GB269_ND2_BLAST.fasta.zip -d source-data/midori2_nd2/
+    prepare_sentinel: source-data/midori2_nd2/MIDORI2_UNIQ_NUC_GB269_ND2_BLAST.fasta
+    convert_cmd: python3 converters/midori2_to_fasta.py source-data/midori2_nd2/MIDORI2_UNIQ_NUC_GB269_ND2_BLAST.fasta midori2_nd2 --target-gene ND2
+
+  - short_name: midori2_nd3
+    version: GB269
+    target_gene: ND3
+    taxonomic_scope: Metazoa (NADH dehydrogenase subunit 3, GenBank-derived)
+    citation: >
+      Machida RJ et al. (2017) MIDORI: a new reference database for the
+      identification of organisms using cytoplasmic gene sequences.
+      Mol. Ecol. Resour. 17(4):e12-e15. https://www.reference-midori.info
+    curl_flags: --insecure  # reference-midori.info has an invalid SSL certificate
+    endpoints:
+      - https://www.reference-midori.info/download/Databases/GenBank269_2025-12-09/BLAST/uniq/fasta/MIDORI2_UNIQ_NUC_GB269_ND3_BLAST.fasta.zip
+    prepare_cmd: unzip -n source-data/midori2_nd3/MIDORI2_UNIQ_NUC_GB269_ND3_BLAST.fasta.zip -d source-data/midori2_nd3/
+    prepare_sentinel: source-data/midori2_nd3/MIDORI2_UNIQ_NUC_GB269_ND3_BLAST.fasta
+    convert_cmd: python3 converters/midori2_to_fasta.py source-data/midori2_nd3/MIDORI2_UNIQ_NUC_GB269_ND3_BLAST.fasta midori2_nd3 --target-gene ND3
+
+  - short_name: midori2_nd4
+    version: GB269
+    target_gene: ND4
+    taxonomic_scope: Metazoa (NADH dehydrogenase subunit 4, GenBank-derived)
+    citation: >
+      Machida RJ et al. (2017) MIDORI: a new reference database for the
+      identification of organisms using cytoplasmic gene sequences.
+      Mol. Ecol. Resour. 17(4):e12-e15. https://www.reference-midori.info
+    curl_flags: --insecure  # reference-midori.info has an invalid SSL certificate
+    endpoints:
+      - https://www.reference-midori.info/download/Databases/GenBank269_2025-12-09/BLAST/uniq/fasta/MIDORI2_UNIQ_NUC_GB269_ND4_BLAST.fasta.zip
+    prepare_cmd: unzip -n source-data/midori2_nd4/MIDORI2_UNIQ_NUC_GB269_ND4_BLAST.fasta.zip -d source-data/midori2_nd4/
+    prepare_sentinel: source-data/midori2_nd4/MIDORI2_UNIQ_NUC_GB269_ND4_BLAST.fasta
+    convert_cmd: python3 converters/midori2_to_fasta.py source-data/midori2_nd4/MIDORI2_UNIQ_NUC_GB269_ND4_BLAST.fasta midori2_nd4 --target-gene ND4
+
+  - short_name: midori2_nd4l
+    version: GB269
+    target_gene: ND4L
+    taxonomic_scope: Metazoa (NADH dehydrogenase subunit 4L, GenBank-derived)
+    citation: >
+      Machida RJ et al. (2017) MIDORI: a new reference database for the
+      identification of organisms using cytoplasmic gene sequences.
+      Mol. Ecol. Resour. 17(4):e12-e15. https://www.reference-midori.info
+    curl_flags: --insecure  # reference-midori.info has an invalid SSL certificate
+    endpoints:
+      - https://www.reference-midori.info/download/Databases/GenBank269_2025-12-09/BLAST/uniq/fasta/MIDORI2_UNIQ_NUC_GB269_ND4L_BLAST.fasta.zip
+    prepare_cmd: unzip -n source-data/midori2_nd4l/MIDORI2_UNIQ_NUC_GB269_ND4L_BLAST.fasta.zip -d source-data/midori2_nd4l/
+    prepare_sentinel: source-data/midori2_nd4l/MIDORI2_UNIQ_NUC_GB269_ND4L_BLAST.fasta
+    convert_cmd: python3 converters/midori2_to_fasta.py source-data/midori2_nd4l/MIDORI2_UNIQ_NUC_GB269_ND4L_BLAST.fasta midori2_nd4l --target-gene ND4L
+
+  - short_name: midori2_nd5
+    version: GB269
+    target_gene: ND5
+    taxonomic_scope: Metazoa (NADH dehydrogenase subunit 5, GenBank-derived)
+    citation: >
+      Machida RJ et al. (2017) MIDORI: a new reference database for the
+      identification of organisms using cytoplasmic gene sequences.
+      Mol. Ecol. Resour. 17(4):e12-e15. https://www.reference-midori.info
+    curl_flags: --insecure  # reference-midori.info has an invalid SSL certificate
+    endpoints:
+      - https://www.reference-midori.info/download/Databases/GenBank269_2025-12-09/BLAST/uniq/fasta/MIDORI2_UNIQ_NUC_GB269_ND5_BLAST.fasta.zip
+    prepare_cmd: unzip -n source-data/midori2_nd5/MIDORI2_UNIQ_NUC_GB269_ND5_BLAST.fasta.zip -d source-data/midori2_nd5/
+    prepare_sentinel: source-data/midori2_nd5/MIDORI2_UNIQ_NUC_GB269_ND5_BLAST.fasta
+    convert_cmd: python3 converters/midori2_to_fasta.py source-data/midori2_nd5/MIDORI2_UNIQ_NUC_GB269_ND5_BLAST.fasta midori2_nd5 --target-gene ND5
+
+  - short_name: midori2_nd6
+    version: GB269
+    target_gene: ND6
+    taxonomic_scope: Metazoa (NADH dehydrogenase subunit 6, GenBank-derived)
+    citation: >
+      Machida RJ et al. (2017) MIDORI: a new reference database for the
+      identification of organisms using cytoplasmic gene sequences.
+      Mol. Ecol. Resour. 17(4):e12-e15. https://www.reference-midori.info
+    curl_flags: --insecure  # reference-midori.info has an invalid SSL certificate
+    endpoints:
+      - https://www.reference-midori.info/download/Databases/GenBank269_2025-12-09/BLAST/uniq/fasta/MIDORI2_UNIQ_NUC_GB269_ND6_BLAST.fasta.zip
+    prepare_cmd: unzip -n source-data/midori2_nd6/MIDORI2_UNIQ_NUC_GB269_ND6_BLAST.fasta.zip -d source-data/midori2_nd6/
+    prepare_sentinel: source-data/midori2_nd6/MIDORI2_UNIQ_NUC_GB269_ND6_BLAST.fasta
+    convert_cmd: python3 converters/midori2_to_fasta.py source-data/midori2_nd6/MIDORI2_UNIQ_NUC_GB269_ND6_BLAST.fasta midori2_nd6 --target-gene ND6
+
+  - short_name: midori2_atp6
+    version: GB269
+    target_gene: atp6
+    taxonomic_scope: Metazoa (ATP synthase F0 subunit 6, GenBank-derived)
+    citation: >
+      Machida RJ et al. (2017) MIDORI: a new reference database for the
+      identification of organisms using cytoplasmic gene sequences.
+      Mol. Ecol. Resour. 17(4):e12-e15. https://www.reference-midori.info
+    curl_flags: --insecure  # reference-midori.info has an invalid SSL certificate
+    endpoints:
+      - https://www.reference-midori.info/download/Databases/GenBank269_2025-12-09/BLAST/uniq/fasta/MIDORI2_UNIQ_NUC_GB269_A6_BLAST.fasta.zip
+    prepare_cmd: unzip -n source-data/midori2_atp6/MIDORI2_UNIQ_NUC_GB269_A6_BLAST.fasta.zip -d source-data/midori2_atp6/
+    prepare_sentinel: source-data/midori2_atp6/MIDORI2_UNIQ_NUC_GB269_A6_BLAST.fasta
+    convert_cmd: python3 converters/midori2_to_fasta.py source-data/midori2_atp6/MIDORI2_UNIQ_NUC_GB269_A6_BLAST.fasta midori2_atp6 --target-gene atp6
+
+  - short_name: midori2_atp8
+    version: GB269
+    target_gene: atp8
+    taxonomic_scope: Metazoa (ATP synthase F0 subunit 8, GenBank-derived)
+    citation: >
+      Machida RJ et al. (2017) MIDORI: a new reference database for the
+      identification of organisms using cytoplasmic gene sequences.
+      Mol. Ecol. Resour. 17(4):e12-e15. https://www.reference-midori.info
+    curl_flags: --insecure  # reference-midori.info has an invalid SSL certificate
+    endpoints:
+      - https://www.reference-midori.info/download/Databases/GenBank269_2025-12-09/BLAST/uniq/fasta/MIDORI2_UNIQ_NUC_GB269_A8_BLAST.fasta.zip
+    prepare_cmd: unzip -n source-data/midori2_atp8/MIDORI2_UNIQ_NUC_GB269_A8_BLAST.fasta.zip -d source-data/midori2_atp8/
+    prepare_sentinel: source-data/midori2_atp8/MIDORI2_UNIQ_NUC_GB269_A8_BLAST.fasta
+    convert_cmd: python3 converters/midori2_to_fasta.py source-data/midori2_atp8/MIDORI2_UNIQ_NUC_GB269_A8_BLAST.fasta midori2_atp8 --target-gene atp8
+
+  - short_name: midori2_16s
+    version: GB269
+    target_gene: LSU_rRNA_16S_mitochondrial
+    taxonomic_scope: Metazoa (16S rRNA (mitochondrial large subunit), GenBank-derived)
+    citation: >
+      Machida RJ et al. (2017) MIDORI: a new reference database for the
+      identification of organisms using cytoplasmic gene sequences.
+      Mol. Ecol. Resour. 17(4):e12-e15. https://www.reference-midori.info
+    curl_flags: --insecure  # reference-midori.info has an invalid SSL certificate
+    endpoints:
+      - https://www.reference-midori.info/download/Databases/GenBank269_2025-12-09/BLAST/uniq/fasta/MIDORI2_UNIQ_NUC_GB269_lrRNA_BLAST.fasta.zip
+    prepare_cmd: unzip -n source-data/midori2_16s/MIDORI2_UNIQ_NUC_GB269_lrRNA_BLAST.fasta.zip -d source-data/midori2_16s/
+    prepare_sentinel: source-data/midori2_16s/MIDORI2_UNIQ_NUC_GB269_lrRNA_BLAST.fasta
+    convert_cmd: python3 converters/midori2_to_fasta.py source-data/midori2_16s/MIDORI2_UNIQ_NUC_GB269_lrRNA_BLAST.fasta midori2_16s --target-gene LSU_rRNA_16S_mitochondrial
+
+  - short_name: pr2
+    version: "5.1.0"
+    target_gene: SSU_rRNA_18S_eukaryotic
+    taxonomic_scope: Protists and algae (18S rRNA)
+    citation: >
+      Guillou L et al. (2013) The Protist Ribosomal Reference database (PR2):
+      a catalogue of unicellular eukaryote Small Sub-Unit rRNA sequences.
+      Nucleic Acids Res. 41(D1):D597-D604. https://pr2-database.org
+    endpoints:
+      # Update version tag when a new PR2 release is available.
+      - https://github.com/pr2database/pr2database/releases/download/v5.1.0.0/pr2_version_5.1.0_merged.xlsx
+    convert_cmd: python3 converters/pr2_to_fasta.py source-data/pr2/pr2_version_5.1.0_merged.xlsx pr2_18s --target-gene SSU_rRNA_18S_eukaryotic
+    postprocess_cmd: python3 converters/duplicate_analysis.py --fasta output/fasta/pr2_18s.fasta --write-deduped output/fasta/pr2_18s_deduped.fasta
+    postprocess_fasta: pr2_18s_deduped
+
+  - short_name: boldistilled
+    # The endpoint always serves the current release; the converter resolves the
+    # release month from the extracted filenames and records it next to the output
+    # FASTA as <output>.version. Do not pin a version here — it would go stale silently.
+    version: rolling
+    target_gene: COI
+    taxonomic_scope: Animals (COI barcode, BOLD BIN clusters)
+    citation: >
+      BOLDistilled: a curated and deduplicated reference database derived from
+      BOLD Systems. https://www.boldsystems.org
+    endpoints:
+      - https://us-sea-1.linodeobjects.com/boldistilled/source.zip
+    # No prepare_sentinel: a sentinel naming one release would skip extraction of a
+    # newer zip. unzip -n is cheap and never overwrites, so just always run it.
+    prepare_cmd: unzip -n source-data/boldistilled/source.zip -d source-data/boldistilled/
+    convert_cmd: python3 converters/boldistilled_to_fasta.py source-data/boldistilled/source boldistilled_coi --target-gene COI
+
+  - short_name: unite
+    version: "10.0"
+    target_gene: ITS_region
+    taxonomic_scope: Fungi and other eukaryotes (ITS)
+    citation: >
+      UNITE Community (2025). UNITE general FASTA release for eukaryotes.
+      Version 19.02.2025. UNITE Community. https://doi.org/10.15156/BIO/2959336
+    endpoints:
+      # TODO: replace with official URL from https://unite.ut.ee/repository.php once
+      # the user-agreement redirect is resolved. Temporary mirror used in the meantime.
+      - https://labs.gbif.org/~tsjeppesen/sh_general_release_s_all_19.02.2025.tgz
+    prepare_cmd: tar -xzf source-data/unite/sh_general_release_s_all_19.02.2025.tgz -C source-data/unite/
+    prepare_sentinel: source-data/unite/sh_general_release_dynamic_s_all_19.02.2025.fasta
+    convert_cmd: python3 converters/unite_to_fasta.py source-data/unite/sh_general_release_dynamic_s_all_19.02.2025.fasta unite_its --target-gene ITS_region
+
+  - short_name: refSeq_arc_16s
+    version: "2026-05-01"
+    target_gene: SSU_rRNA_16S_prokaryotic
+    taxonomic_scope: Archaea (16S rRNA, NCBI RefSeq)
+    citation: >
+      NCBI RefSeq targeted loci project: 16S ribosomal RNA sequences (Archaea).
+      BioProject PRJNA33317. https://www.ncbi.nlm.nih.gov/bioproject/PRJNA33317
+    endpoints:
+      - https://hosted-datasets.gbif.org/ncbi/PRJNA33317.zip
+    prepare_cmd: unzip -n source-data/refSeq_arc_16s/PRJNA33317.zip -d source-data/refSeq_arc_16s/extracted
+    prepare_sentinel: source-data/refSeq_arc_16s/extracted
+    convert_cmd: python3 converters/dwc_to_fasta.py source-data/refSeq_arc_16s/extracted refSeq_arc_16s --target-gene SSU_rRNA_16S_prokaryotic --filter-gene 16s
+
+  - short_name: refSeq_bac_16s
+    version: "2026-05-01"
+    target_gene: SSU_rRNA_16S_prokaryotic
+    taxonomic_scope: Bacteria (16S rRNA, NCBI RefSeq)
+    citation: >
+      NCBI RefSeq targeted loci project: 16S ribosomal RNA sequences (Bacteria).
+      BioProject PRJNA33175. https://www.ncbi.nlm.nih.gov/bioproject/PRJNA33175
+    endpoints:
+      - https://hosted-datasets.gbif.org/ncbi/PRJNA33175.zip
+    prepare_cmd: unzip -n source-data/refSeq_bac_16s/PRJNA33175.zip -d source-data/refSeq_bac_16s/extracted
+    prepare_sentinel: source-data/refSeq_bac_16s/extracted
+    convert_cmd: python3 converters/dwc_to_fasta.py source-data/refSeq_bac_16s/extracted refSeq_bac_16s --target-gene SSU_rRNA_16S_prokaryotic --filter-gene 16s
+
+  - short_name: refseq_its
+    version: null   # TODO: record version when download URL is confirmed
+    target_gene: ITS_region
+    taxonomic_scope: Fungi and land plants (ITS, NCBI RefSeq)
+    citation: >
+      NCBI RefSeq ITS sequences, distributed as a Darwin Core Archive via GBIF.
+      https://www.ncbi.nlm.nih.gov/refseq
+    endpoints:
+      - https://hosted-datasets.gbif.org/ncbi/PRJNA177353.zip
+    prepare_cmd: unzip -n source-data/refseq_its/PRJNA177353.zip -d source-data/refseq_its/extracted
+    prepare_sentinel: source-data/refseq_its/extracted
+    convert_cmd: python3 converters/dwc_to_fasta.py source-data/refseq_its/extracted refseq_its --target-gene ITS_region --filter-gene its
+
+  - short_name: its2_global
+    version: "2023-01-17"
+    target_gene: ITS2
+    taxonomic_scope: Viridiplantae (ITS2)
+    citation: >
+      Quaresma A et al. (2024) Semi-automated sequence curation for reliable reference
+      datasets in ITS2 vascular plant DNA (meta-)barcoding. Scientific Data.
+      https://doi.org/10.1038/s41597-024-02962-5
+    endpoints:
+      # ?download=1 suffix causes basename to save as 'its2...fa?download=1'; prepare_cmd renames it
+      - https://zenodo.org/records/7968519/files/its2.global.2023-01-17.curated.tax.mc.add.fa?download=1
+    prepare_cmd: mv "source-data/its2_global/its2.global.2023-01-17.curated.tax.mc.add.fa?download=1" source-data/its2_global/its2.global.2023-01-17.curated.tax.mc.add.fa
+    prepare_sentinel: source-data/its2_global/its2.global.2023-01-17.curated.tax.mc.add.fa
+    convert_cmd: python3 converters/its2_global_to_fasta.py source-data/its2_global/its2.global.2023-01-17.curated.tax.mc.add.fa its2_global --target-gene ITS2
+    postprocess_cmd: python3 converters/duplicate_analysis.py --fasta output/fasta/its2_global.fasta --write-deduped output/fasta/its2_global_deduped.fasta
+    postprocess_fasta: its2_global_deduped
+
+  - short_name: bell_brosi_rbcl
+    version: "2021-07"
+    target_gene: rbcL
+    taxonomic_scope: Land plants (rbcL)
+    citation: >
+      Bell KL, Brosi BJ (2016) rbcL reference library. figshare. Collection.
+      https://doi.org/10.6084/m9.figshare.c.3466311.v1
+    endpoints:
+      # ndownloader URL has no filename — downloads as '28757943'; prepare_cmd renames it
+      - https://ndownloader.figshare.com/files/28757943
+    prepare_cmd: mv source-data/bell_brosi_rbcl/28757943 source-data/bell_brosi_rbcl/rbcL_plus_Nov2019adds_Jul2021corrections.dada2.fa
+    prepare_sentinel: source-data/bell_brosi_rbcl/rbcL_plus_Nov2019adds_Jul2021corrections.dada2.fa
+    convert_cmd: python3 converters/bell_brosi_rbcl_to_fasta.py source-data/bell_brosi_rbcl/rbcL_plus_Nov2019adds_Jul2021corrections.dada2.fa bell_brosi_rbcl --target-gene rbcL
+
+  - short_name: gtdb
+    version: v232
+    target_gene: SSU_rRNA_16S_prokaryotic
+    taxonomic_scope: Bacteria and Archaea (16S SSU rRNA)
+    citation: >
+      Parks DH et al. (2022) GTDB: an ongoing census of bacterial and archaeal
+      diversity through a phylogenetically consistent, rank normalised and complete
+      genome-based taxonomy. Nucleic Acids Res. 50(D1):D785-D794.
+      https://gtdb.ecogenomic.org
+    endpoints:
+      - https://data.gtdb.ecogenomic.org/releases/latest/genomic_files_reps/bac120_ssu_reps.fna.gz
+      - https://data.gtdb.ecogenomic.org/releases/latest/genomic_files_reps/ar53_ssu_reps.fna.gz
+      - https://data.gtdb.ecogenomic.org/releases/latest/bac120_taxonomy.tsv
+      - https://data.gtdb.ecogenomic.org/releases/latest/ar53_taxonomy.tsv
+    convert_cmd: python3 converters/gtdb_to_fasta.py source-data/gtdb gtdb_16s --target-gene SSU_rRNA_16S_prokaryotic
+
+  - short_name: ncbi_matk
+    version: "nuccore-2026-06"   # NCBI nuccore is a live query — record the fetch month
+    target_gene: matK
+    taxonomic_scope: Viridiplantae (matK plastid barcode, NCBI nuccore)
+    citation: >
+      NCBI Nucleotide (nuccore): matK gene sequences for Viridiplantae,
+      retrieved via Entrez E-utilities. https://www.ncbi.nlm.nih.gov/nuccore
+    # No static endpoints — the converter queries NCBI Entrez directly at convert time.
+    # Uses NCBI_API_KEY/NCBI_EMAIL from .env if present (recommended; runs without).
+    endpoints: []
+    convert_cmd: python3 converters/ncbi_matk_to_fasta.py ncbi_matk --target-gene matK --raw-dir source-data/ncbi_matk
+    postprocess_cmd: python3 converters/duplicate_analysis.py --fasta output/fasta/ncbi_matk.fasta --write-deduped output/fasta/ncbi_matk_deduped.fasta
+    postprocess_fasta: ncbi_matk_deduped
