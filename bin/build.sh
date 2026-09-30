@@ -11,10 +11,12 @@
 #   bash bin/build.sh --download-only                        # download + prepare only
 #   bash bin/build.sh --convert-only                         # convert only (skip download)
 #   bash bin/build.sh --skip-udb                             # skip the final UDB build
+#   bash bin/build.sh --index-only                           # rebuild combined FASTA + UDB from existing per-dataset FASTAs
 #   bash bin/build.sh --convert-only gtdb pr2                # flags and filters can combine
 #   bash bin/build.sh --list                                 # print available datasets
 #   bash bin/build.sh --config small12s.yaml                 # use a custom config file
 #   bash bin/build.sh --output-name small_12s                # set output FASTA/UDB base name
+#   bash bin/build.sh --wordlength 8                         # UDB k-mer length (default 12)
 #   bash bin/build.sh --source-dir /path/to/storage           # store source data on external storage
 #   bash bin/build.sh --output-dir /path/to/storage           # write FASTAs and UDB to external storage
 #
@@ -50,11 +52,18 @@ sample_records() {  # sample_records <fasta> <n>
     local f="$1" n="$2"
     [[ -s "$f" ]] || return 0
     awk -v n="$n" '/^>/ { c++ } c > n { exit } { print }' "$f"
-    tail -c 262144 "$f" | awk -v n="$n" '
+    # Via a temp file rather than `tail | awk`: awk exits as soon as it has n
+    # records, tail then takes SIGPIPE, and under `set -o pipefail` that failure
+    # propagates and kills the build. Writing 256 KB to disk avoids the pipe.
+    local tmp
+    tmp=$(mktemp)
+    tail -c 262144 "$f" > "$tmp"
+    awk -v n="$n" '
         /^>/ { started = 1; c++ }
         !started { next }
         c > n { exit }
-        { print }'
+        { print }' "$tmp"
+    rm -f "$tmp"
 }
 
 # ── download verification (Tier 0) ────────────────────────────────────────────
@@ -103,8 +112,18 @@ fi
 DO_DOWNLOAD=true
 DO_CONVERT=true
 DO_UDB=true
+DO_INDEX_ONLY=false
 REQUESTED=""   # colon-delimited list of requested short_names, empty = all
 OUTPUT_NAME="gbif_dna_taxonomy_annotation"
+# k-mer length for the UDB index. vsearch defaults to 8; 12 makes search ~2.4x
+# faster because occurrences per k-mer fall as 1/4^k, and k-mer counting — not
+# alignment — dominates search time on a reference this size. Measured on a 40%
+# sample: 130 -> 309 seq/s, index 7.2 -> 7.4 GB, no hits lost above 97% identity.
+# Losses concentrate below 92% (a seed needs k consecutive exact matches, and at
+# 90% identity mismatches average ~10 bp apart), so species- and genus-level
+# assignments are structurally unaffected. Gain saturates at 12; 13 adds ~3%.
+# See "Index word length" in README.md for the full rationale.
+WORDLENGTH=12
 SOURCE_DIR="$REPO_ROOT/source-data"
 OUTPUT_DIR="$REPO_ROOT/output/fasta"
 DATASET_FASTAS=()  # FASTAs produced by this run, in order
@@ -117,6 +136,7 @@ while [[ $# -gt 0 ]]; do
         --download-only) DO_CONVERT=false ;;
         --convert-only)  DO_DOWNLOAD=false ;;
         --skip-udb)      DO_UDB=false ;;
+        --index-only)    DO_DOWNLOAD=false; DO_CONVERT=false; DO_INDEX_ONLY=true ;;
         --list|--help)   DO_LIST=true ;;  # handled after parsing (args are consumed by this loop)
         --config)
             shift
@@ -130,6 +150,13 @@ while [[ $# -gt 0 ]]; do
             shift
             [[ $# -eq 0 ]] && { echo "Error: --output-name requires a name argument" >&2; exit 1; }
             OUTPUT_NAME="$1"
+            ;;
+        --wordlength)
+            shift
+            [[ $# -eq 0 ]] && { echo "Error: --wordlength requires an integer argument" >&2; exit 1; }
+            [[ "$1" =~ ^[0-9]+$ ]] && [[ "$1" -ge 3 ]] && [[ "$1" -le 15 ]] \
+                || { echo "Error: --wordlength must be an integer 3-15 (got '$1')" >&2; exit 1; }
+            WORDLENGTH="$1"
             ;;
         --source-dir)
             shift
@@ -168,8 +195,29 @@ if [[ "$DO_LIST" == true ]]; then
     exit 0
 fi
 
+# --index-only rebuilds the combined FASTA and UDB from per-dataset FASTAs that are
+# already on disk, skipping download and conversion. Reject the combinations that
+# would quietly produce a partial or pointless index.
+if [[ "$DO_INDEX_ONLY" == true ]]; then
+    if [[ "$DO_UDB" != true ]]; then
+        echo "Error: --index-only and --skip-udb are contradictory (nothing would be built)." >&2
+        exit 1
+    fi
+    if [[ -n "$REQUESTED" ]]; then
+        echo "Error: --index-only cannot be combined with a dataset filter." >&2
+        echo "  The combined FASTA and UDB are built from ALL configured datasets; a filter" >&2
+        echo "  would replace the full index with one covering only the named datasets." >&2
+        exit 1
+    fi
+fi
+
+# True when this run ends in a combined FASTA (+ UDB): either it converted the
+# parts itself, or --index-only is reusing parts already on disk.
+BUILD_COMBINED=false
+[[ "$DO_CONVERT" == true || "$DO_INDEX_ONLY" == true ]] && BUILD_COMBINED=true
+
 # vsearch is only needed for the final UDB build — check it before doing any work.
-if [[ "$DO_UDB" == true && "$DO_CONVERT" == true ]]; then
+if [[ "$DO_UDB" == true && "$BUILD_COMBINED" == true ]]; then
     require_cmd vsearch "https://github.com/torognes/vsearch  (conda: conda install -c bioconda vsearch; Debian/Ubuntu: apt install vsearch; macOS: brew install vsearch)"
 fi
 
@@ -183,13 +231,17 @@ for i in $(seq 0 $((count - 1))); do
         continue
     fi
 
-    echo ""
-    echo "════════════════════════════════════════"
-    echo "  $short_name  ($target_gene)"
-    echo "════════════════════════════════════════"
+    # Under --index-only nothing happens per dataset — only the parts list is
+    # resolved — so skip the banner and let the parts summary below speak.
+    if [[ "$DO_INDEX_ONLY" != true ]]; then
+        echo ""
+        echo "════════════════════════════════════════"
+        echo "  $short_name  ($target_gene)"
+        echo "════════════════════════════════════════"
 
-    dir="$SOURCE_DIR/$short_name"
-    mkdir -p "$dir"
+        dir="$SOURCE_DIR/$short_name"
+        mkdir -p "$dir"
+    fi
 
     # ── download endpoints ──────────────────────────────────────────────────
     if [[ "$DO_DOWNLOAD" == true ]]; then
@@ -250,12 +302,17 @@ for i in $(seq 0 $((count - 1))); do
     fi
 
     # ── convert ─────────────────────────────────────────────────────────────
-    if [[ "$DO_CONVERT" == true ]]; then
+    # The parts list is derived from the config whenever a combined FASTA is being
+    # built, including under --index-only. Only the commands are conditional, so
+    # both modes resolve the same files in the same order from the same source.
+    if [[ "$BUILD_COMBINED" == true ]]; then
         convert_cmd=$(yq ".datasets[$i].convert_cmd" "$CONFIG")
         convert_cmd="${convert_cmd//source-data\//$SOURCE_DIR/}"
         convert_cmd="$convert_cmd --output-dir \"$OUTPUT_DIR\""
-        echo "  Converting …"
-        eval "$convert_cmd"
+        if [[ "$DO_CONVERT" == true ]]; then
+            echo "  Converting …"
+            eval "$convert_cmd"
+        fi
         # Derive the output FASTA path: last positional argument before any -- flags
         fasta_stem=$(echo "$convert_cmd" | sed 's/ --[a-z].*//' | awk '{print $NF}')
         DATASET_FASTAS+=("$OUTPUT_DIR/${fasta_stem}.fasta")
@@ -266,8 +323,10 @@ for i in $(seq 0 $((count - 1))); do
         if [[ -n "$postprocess_cmd" ]]; then
             postprocess_cmd="${postprocess_cmd//source-data\//$SOURCE_DIR/}"
             postprocess_cmd="${postprocess_cmd//output\/fasta\//$OUTPUT_DIR/}"
-            echo "  Post-processing …"
-            eval "$postprocess_cmd"
+            if [[ "$DO_CONVERT" == true ]]; then
+                echo "  Post-processing …"
+                eval "$postprocess_cmd"
+            fi
             if [[ -n "$postprocess_fasta" ]]; then
                 # Use the post-processed FASTA in the combined output instead of the raw one.
                 # (Index explicitly rather than [-1]; negative subscripts need bash 4.3+, not macOS 3.2.)
@@ -279,7 +338,7 @@ for i in $(seq 0 $((count - 1))); do
 done
 
 # ── concatenate all dataset FASTAs into one combined file ─────────────────────
-if [[ "$DO_CONVERT" == true ]]; then
+if [[ "$BUILD_COMBINED" == true ]]; then
     mkdir -p "$OUTPUT_DIR"
     COMBINED="$OUTPUT_DIR/${OUTPUT_NAME}.fasta"
     echo ""
@@ -294,6 +353,23 @@ if [[ "$DO_CONVERT" == true ]]; then
         exit 1
     fi
 
+    # Check every part up front. cat would fail on a missing file anyway, but only
+    # after writing a truncated combined FASTA, and an empty part would pass
+    # silently and shrink the index with nothing to show why.
+    missing=()
+    for part in "${parts[@]}"; do
+        [[ -s "$part" ]] || missing+=("$part")
+    done
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo "  ${#missing[@]} of ${#parts[@]} dataset FASTAs are missing or empty:" >&2
+        for part in "${missing[@]}"; do echo "    $part" >&2; done
+        if [[ "$DO_INDEX_ONLY" == true ]]; then
+            echo "  --index-only reuses existing per-dataset FASTAs; run a conversion first." >&2
+        fi
+        exit 1
+    fi
+    echo "  ${#parts[@]} dataset FASTAs to combine"
+
     cat "${parts[@]}" > "$COMBINED"
     COUNT=$(grep -c "^>" "$COMBINED")
     echo "  Done — $COUNT sequences written to $COMBINED"
@@ -306,7 +382,9 @@ if [[ "$DO_CONVERT" == true ]]; then
         echo "════════════════════════════════════════"
         UDB="$OUTPUT_DIR/${OUTPUT_NAME}.udb"
         LOG="$OUTPUT_DIR/${OUTPUT_NAME}.log"
-        vsearch --makeudb_usearch "$COMBINED" --output "$UDB" --log "$LOG"
+        echo "  Word length: $WORDLENGTH"
+        vsearch --makeudb_usearch "$COMBINED" --output "$UDB" --log "$LOG" \
+                --wordlength "$WORDLENGTH"
         echo "  Done — $UDB"
 
         # ── self-hit smoke test (Tier 3) ─────────────────────────────────────
@@ -331,9 +409,27 @@ if [[ "$DO_CONVERT" == true ]]; then
         got=$(awk '/^>/ { print substr($0, 2) }' "$SAMPLE" | sort -u | wc -l | tr -d ' ')
         echo "  Sampled $got sequences from ${#parts[@]} datasets"
 
+        VERR="$OUTPUT_DIR/.udb_selftest.err"
         vsearch --usearch_global "$SAMPLE" --db "$UDB" \
                 --id 0.99 --maxaccepts 1 --maxhits 1 --maxrejects 32 \
-                --blast6out "$HITS" --quiet --threads 4
+                --blast6out "$HITS" --quiet --threads 4 2>"$VERR"
+
+        # vsearch prints "WARNING: Wordlength adjusted to N as indicated in UDB
+        # file" whenever a UDB stores anything other than its own default of 8 —
+        # which is exactly the normal case here. Left as-is it reads like a fault,
+        # so report the stored word length plainly and reserve the warning for the
+        # thing that would actually be wrong: a value we did not ask for.
+        udb_wordlength=$(sed -n 's/.*Wordlength adjusted to \([0-9]*\) as indicated in UDB file.*/\1/p' "$VERR" | head -1)
+        # Silence means the UDB stores vsearch's default.
+        [[ -n "$udb_wordlength" ]] || udb_wordlength=8
+        if [[ "$udb_wordlength" == "$WORDLENGTH" ]]; then
+            echo "  Index word length: $udb_wordlength, as requested"
+        else
+            echo "  WARNING: index word length is $udb_wordlength but $WORDLENGTH was requested —" >&2
+            echo "           the UDB was not built with the intended setting." >&2
+        fi
+        # Pass through anything else vsearch reported; only the line above is ours to explain.
+        grep -v 'Wordlength adjusted to' "$VERR" | grep -v '^[[:space:]]*$' >&2 || true
 
         matched=$(awk -F'\t' '$3 >= 99.0 {print $1}' "$HITS" | sort -u | wc -l | tr -d ' ')
         if [[ "$got" -eq 0 ]]; then
@@ -347,7 +443,7 @@ if [[ "$DO_CONVERT" == true ]]; then
             echo "  Leaving $SAMPLE and $HITS in place for inspection." >&2
             exit 1
         fi
-        rm -f "$SAMPLE" "$HITS"
+        rm -f "$SAMPLE" "$HITS" "$VERR"
         echo "  UDB verified."
     fi
 fi

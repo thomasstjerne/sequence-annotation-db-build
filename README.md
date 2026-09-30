@@ -24,7 +24,7 @@ one dataset, the NCBI Entrez API.
 
 ## Resource requirements
 
-Measured on a full 26-source build (2026-09):
+Measured on a full 26-source build (2026-09), sizes as `ls -lh` reports them:
 
 | | |
 |---|---|
@@ -32,10 +32,30 @@ Measured on a full 26-source build (2026-09):
 | Downloaded sources | ~11 GB |
 | Combined FASTA | ~4.7 GB |
 | UDB | ~18 GB |
-| Peak RAM | ~8 GB (the vsearch index build) |
+| Peak RAM | ~9 GB (the vsearch index build) |
 | **Free disk needed** | **~35 GB**, sources and outputs combined |
 
 Sources and outputs can live on separate volumes — see `--source-dir` and `--output-dir`.
+
+### Index word length
+
+The UDB is built with `--wordlength 12`, not vsearch's default of 8. Occurrences per
+k-mer fall as 1/4^k, and on a reference this size k-mer counting rather than alignment
+dominates search time, so a longer word makes search roughly 2.4x faster. Benchmarked on
+a 40% sample: 130 to 309 sequences/sec, with no hits lost above 97% identity. Losses
+concentrate below 92% — a seed needs k consecutive exact matches, and at 90% identity
+mismatches average only ~10 bp apart — so species- and genus-level assignments are
+unaffected. The gain saturates at 12; 13 adds ~3%.
+
+Override with `--wordlength N` to compare. Two things to know when you do:
+
+- **The index grows by a fixed 64 MiB**, not proportionally: k=12 needs 4^12 buckets
+  regardless of how much reference data there is, at 4 bytes each. Measured delta on a
+  test build was 63.8 MiB against that theoretical 64 MiB. Negligible on a full build,
+  but it dominates a small one — a 1,160-sequence index goes from 8.5 MiB at k=8 to
+  72.3 MiB at k=12, almost entirely empty bucket table.
+- **A search adopts the word length stored in the UDB**, so the server needs no matching
+  flag; point it at the new index and it uses k=12.
 
 ## Quick start
 
@@ -67,8 +87,10 @@ bash bin/build.sh --list                       list configured sources and exit
 bash bin/build.sh --download-only              fetch and extract, no conversion
 bash bin/build.sh --convert-only               convert from already-downloaded sources
 bash bin/build.sh --skip-udb                   build the combined FASTA but not the index
+bash bin/build.sh --index-only                 rebuild the combined FASTA and UDB only
 bash bin/build.sh --config other.yaml          use a different config file
 bash bin/build.sh --output-name small_12s      name the combined FASTA/UDB
+bash bin/build.sh --wordlength 8               UDB k-mer length, 3-15 (default 12)
 bash bin/build.sh --source-dir  /mnt/data      where downloads are stored
 bash bin/build.sh --output-dir  /mnt/data/out  where FASTAs and the UDB are written
 ```
@@ -77,6 +99,13 @@ Flags and source filters combine.
 
 Downloads are cached: a source already present and passing verification is not re-fetched, so a
 re-run after a failure resumes rather than starting over.
+
+`--index-only` reuses the per-dataset FASTAs already in the output directory: it re-derives the
+same parts list from the config, concatenates, rebuilds the UDB and verifies it, without
+downloading or converting anything. Use it to re-index with different settings — a new
+`--wordlength`, say — without spending the ~25 minutes of conversion that would produce
+identical per-dataset files. It fails if any part is missing, and refuses a dataset filter,
+since either would silently yield an index covering less than the full reference.
 
 ## Secrets
 
@@ -168,7 +197,9 @@ These are known and deliberate to leave visible rather than hide.
 
 - **A filtered run rebuilds the combined FASTA and UDB from only the selected sources.**
   `bash bin/build.sh gtdb` will replace a full combined index with a gtdb-only one. Use
-  `--skip-udb`, or a separate `--output-dir`, when building a subset.
+  `--skip-udb`, or a separate `--output-dir`, when building a subset — then `--index-only`
+  to rebuild the full index once the part is refreshed. (`--index-only` itself rejects a
+  filter for this reason.)
 - **One failing source aborts the whole run.** There is no per-source error isolation and no
   summary of what succeeded.
 - **Outputs are written in place.** A crash or a full disk during concatenation or indexing
